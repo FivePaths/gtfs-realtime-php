@@ -1,0 +1,10 @@
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/.github export-ignore
+/examples export-ignore
+/tests export-ignore
+/tools export-ignore
+/phpunit.xml.dist export-ignore
+/regenerate.sh export-ignore
+/PROTOC_VERSION export-ignore
+/RELEASING.md export-ignore
