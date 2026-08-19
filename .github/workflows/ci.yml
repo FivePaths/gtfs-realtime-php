@@ -44,7 +44,8 @@ jobs:
         run: composer update --no-interaction --no-progress ${{ matrix.deps == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
       - name: Log resolved versions
         run: |
-          composer show google/protobuf phpunit/phpunit | grep -E '^(name|versions)'
+          composer show google/protobuf | grep -E '^(name|versions)'
+          composer show phpunit/phpunit | grep -E '^(name|versions)'
           if [ -n "${{ matrix.extension }}" ]; then php --ri protobuf | head -5; fi
       - run: vendor/bin/phpunit
       - run: composer audit
