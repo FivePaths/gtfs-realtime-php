@@ -30,10 +30,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      # One-time prerequisite: Settings -> Pages -> Source: "GitHub Actions".
+      # The workflow token can deploy to Pages but cannot create the site --
+      # that is a repository-administration call GitHub never grants to
+      # GITHUB_TOKEN, so the first enable is a human step.
       - uses: actions/configure-pages@v5
-        with:
-          # Creates the Pages site on first run, so no manual Settings step.
-          enablement: true
       - name: Build page from README
         run: |
           command -v pandoc || sudo apt-get install -y pandoc
