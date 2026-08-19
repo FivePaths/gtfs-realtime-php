@@ -66,6 +66,92 @@ a regeneration, whichever comes first. The editions transform was validated
 against protoc 34.1 before v1 shipped; see git history of
 `proto/gtfs-realtime.proto` for the working conversion.
 
+## First publication
+
+One-time setup. Everything after this is the tag-and-push loop below.
+
+### 1. Create the GitHub repository
+
+It must be **public** — Packagist cannot read a private repository without a
+paid subscription, and the point of this package is that anyone can install it.
+
+Create `fivepaths/gtfs-realtime-php` on GitHub with no README, no .gitignore
+and no licence (the repository already has all three; letting GitHub add its
+own creates an unrelated root commit you would have to merge past).
+
+### 2. Push
+
+```
+git push -u origin main
+git tag -a v1.0.0 -m "v1.0.0"
+git push origin v1.0.0
+```
+
+The `v` prefix is conventional and Packagist strips it; the package version
+will read `1.0.0`.
+
+### 3. Submit to Packagist
+
+Sign in at <https://packagist.org> — "Sign in with GitHub" is simplest, and it
+is what lets Packagist install the update hook for you in step 4. Then go to
+<https://packagist.org/packages/submit> and paste:
+
+```
+https://github.com/fivepaths/gtfs-realtime-php
+```
+
+Packagist clones the repository, reads `composer.json`, and names the package
+from the `name` field — **`gtfs-media/gtfs-realtime-php`**, not the GitHub
+org. That mismatch is fine and common; Packagist does not require the vendor
+prefix to match the hosting account. The `gtfs-media` vendor namespace is
+unclaimed, and submitting first claims it for this account.
+
+### 4. Wire up automatic updates
+
+Without this, Packagist only re-reads the repository on a slow crawl and new
+tags can take hours to appear.
+
+- **If you signed in with GitHub**, open the package page → *Settings*, and
+  Packagist offers to install the hook itself. Accept it. Done.
+- **Otherwise**, add it by hand: GitHub repo → *Settings* → *Webhooks* →
+  *Add webhook*.
+  - Payload URL: `https://packagist.org/api/github?username=<your-packagist-username>`
+  - Content type: `application/json`
+  - Secret: your Packagist API token, from <https://packagist.org/profile/>
+  - Events: *Just the push event*
+
+Confirm it works by checking the package page shows `1.0.0` within a minute or
+two of the tag push, and that GitHub's webhook delivery log shows a 202.
+
+### 5. Lock the vendor down
+
+On <https://packagist.org/profile/>, enable two-factor authentication, then on
+the package's *Settings* tab require 2FA for the vendor. A package that other
+sites install is worth the two minutes.
+
+### 6. Verify a real install
+
+From a scratch directory, prove the thing the CVE blocked actually works now:
+
+```
+composer require gtfs-media/gtfs-realtime-php
+composer audit
+```
+
+`composer audit` must report no advisories. That is the whole reason this
+package exists — `lowa/gtfs-realtime-php` pins `google/protobuf` to exactly
+3.25.0, which carries CVE-2026-6409, and Composer 2.8+ refuses to install it.
+
+### 7. Switch the consumers
+
+- `drupal/gtfs_rt`: replace `lowa/gtfs-realtime-php: ^v1` with
+  `gtfs-media/gtfs-realtime-php: ^1.0` in `composer.json`, and update the
+  Requirements section of its README and drupal.org project page.
+- The SFMTA site: `composer update` to move off the vulnerable pin. This is a
+  live exposure independent of the drupal.org release — `gtfs_rt` decodes
+  protobuf fetched from a feed it does not control, which is exactly the
+  attack surface CVE-2026-6409 describes.
+
 ## Publishing mechanics
 
 Tag `vX.Y.Z`, push with tags. Packagist picks up new tags via the repository
