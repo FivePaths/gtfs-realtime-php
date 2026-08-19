@@ -92,6 +92,10 @@ recursive workflows); tests run inside the maintenance job and the result is
 stated in the PR body. Push any commit to the branch, or close and reopen
 the PR, to get a full CI run before merging.
 
+`.github/CODEOWNERS` names the maintainer as owner of every path, so GitHub
+requests their review automatically on each PR the automation (or anyone
+else) opens — the review request is the work-item notification.
+
 ## First publication
 
 One-time setup. Everything after this is the tag-and-push loop below.
