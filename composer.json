@@ -21,7 +21,10 @@
   },
   "autoload": {
     "psr-4": {
-      "Google\\Transit\\Realtime\\": "src/Google/Transit/Realtime",
+      "Google\\Transit\\Realtime\\": [
+        "src/Google/Transit/Realtime",
+        "legacy/Google/Transit/Realtime"
+      ],
       "GPBMetadata\\": "src/GPBMetadata"
     }
   },
@@ -49,5 +52,8 @@
   ],
   "suggest": {
     "ext-protobuf": "Replaces the pure-PHP protobuf runtime with the C implementation; much faster and leaner on large feeds"
+  },
+  "replace": {
+    "lowa/gtfs-realtime-php": "1.0.0"
   }
 }

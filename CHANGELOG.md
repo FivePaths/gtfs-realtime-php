@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0 — unreleased
+
+- composer.json now declares this package as a `replace` for
+  `lowa/gtfs-realtime-php` 1.0.0: projects that still require the old
+  name accept this package in its place, and the Packagist page states
+  the relationship.
+- The 17 legacy underscore class names lowa shipped
+  (`FeedHeader_Incrementality`, `TripUpdate_StopTimeUpdate`, and friends)
+  are available again as deprecated aliases of the nested classes, making
+  the swap a drop-in even for code written against the old names. Each
+  alias emits a suppressed `E_USER_DEPRECATED` that deprecation tooling
+  can surface.
+
 ## 1.0.0 — 2026-08-18
 
 First release. PHP classes for GTFS Realtime, generated with protoc 33.6
