@@ -66,6 +66,32 @@ a regeneration, whichever comes first. The editions transform was validated
 against protoc 34.1 before v1 shipped; see git history of
 `proto/gtfs-realtime.proto` for the working conversion.
 
+## What the automation already does
+
+CI (`.github/workflows/ci.yml`) runs on every push and PR: the test matrix
+pins the constraint floor (PHP 8.1, protobuf 4.33.6) and ceiling (latest
+5.x), one leg runs under the PECL C extension, and a reproducibility job
+regenerates from the committed proto with the pinned protoc and fails on any
+difference from src/ or the API-surface snapshot.
+
+Maintenance (`.github/workflows/maintenance.yml`, Mondays + manual dispatch)
+turns change into work items, so none of the watching below is done by hand:
+
+- Upstream proto drift becomes a **pull request** with the sync complete —
+  new pristine + SHA, regenerated code, rebuilt snapshots — and the diffs
+  this document says to review, plus the in-job test result. Conversion
+  failures (convert.php refusing an unknown construct) become an **issue**.
+- A protoc patch release in the pinned minor becomes a **pull request**
+  bumping PROTOC_VERSION, the runtime floor, and the regenerated code.
+- A security advisory, a test failure against latest allowed dependencies,
+  or a new protobuf major on Packagist becomes an **issue** stating the
+  decision to make.
+
+PRs opened by the workflow's own token do not trigger CI (GitHub blocks
+recursive workflows); tests run inside the maintenance job and the result is
+stated in the PR body. Push any commit to the branch, or close and reopen
+the PR, to get a full CI run before merging.
+
 ## First publication
 
 One-time setup. Everything after this is the tag-and-push loop below.

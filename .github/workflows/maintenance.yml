@@ -1,0 +1,235 @@
+# Turns upstream movement into actionable work for a human maintainer:
+#
+#   - spec drift in google/transit  -> a pull request with the sync already
+#     done (pristine + regenerated code + rebuilt snapshots) and the diffs
+#     RELEASING.md says to review
+#   - a new protoc patch release    -> a pull request bumping the pin, the
+#     runtime floor, and the regenerated code
+#   - a security advisory, a test failure against latest dependencies, or a
+#     new protobuf major -> an issue describing exactly what to decide
+#
+# Nothing here merges itself, and a failure in the automation opens an issue
+# rather than dying silently.
+#
+# Note: pull requests created with the workflow's GITHUB_TOKEN do not trigger
+# the CI workflow (GitHub prevents recursive workflows). The test result is
+# run in-job and reported in the PR body instead; push any commit to the
+# branch (or close/reopen the PR) to get a full CI run before merging.
+name: Maintenance
+
+on:
+  schedule:
+    - cron: '17 14 * * 1'  # Mondays, 07:17 Pacific
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  UPSTREAM_REPO: google/transit
+  UPSTREAM_PATH: gtfs-realtime/proto/gtfs-realtime.proto
+
+jobs:
+  spec-sync:
+    name: Sync upstream proto changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for upstream drift
+        id: drift
+        run: |
+          LATEST=$(gh api "repos/${UPSTREAM_REPO}/commits?path=${UPSTREAM_PATH}&per_page=1" --jq '.[0].sha')
+          CURRENT=$(cat proto/upstream/UPSTREAM_COMMIT)
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          if [ "$LATEST" = "$CURRENT" ]; then
+            echo "Up to date at $CURRENT."
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          elif gh pr list --state open --json headRefName --jq '.[].headRefName' | grep -q '^spec-sync-'; then
+            echo "Drift found but an open spec-sync PR already exists; it is the actionable task."
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream moved: $CURRENT -> $LATEST"
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: shivammathur/setup-php@v2
+        if: steps.drift.outputs.drifted == 'true'
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Sync, convert, regenerate, rebuild snapshots
+        if: steps.drift.outputs.drifted == 'true'
+        run: |
+          LATEST='${{ steps.drift.outputs.latest }}'
+          curl -fsSL -o proto/upstream/gtfs-realtime.proto \
+            "https://raw.githubusercontent.com/${UPSTREAM_REPO}/${LATEST}/${UPSTREAM_PATH}"
+          echo "$LATEST" > proto/upstream/UPSTREAM_COMMIT
+          V="$(cat PROTOC_VERSION)"
+          curl -fsSL -o /tmp/protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${V}/protoc-${V}-linux-x86_64.zip"
+          unzip -q /tmp/protoc.zip -d "$HOME/protoc"
+          export PATH="$HOME/protoc/bin:$PATH"
+          ./regenerate.sh
+          composer update --no-interaction --no-progress
+          php tools/make-fixtures.php
+          php tools/api-surface.php > tests/api-surface.txt
+      - name: Run tests
+        if: steps.drift.outputs.drifted == 'true'
+        id: tests
+        run: |
+          if vendor/bin/phpunit; then
+            echo "result=passing" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=FAILING — review before merge" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open pull request
+        if: steps.drift.outputs.drifted == 'true'
+        run: |
+          LATEST='${{ steps.drift.outputs.latest }}'
+          CURRENT='${{ steps.drift.outputs.current }}'
+          BRANCH="spec-sync-${LATEST:0:12}"
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "Sync spec to google/transit ${LATEST:0:12}"
+          git push origin "$BRANCH"
+          {
+            echo "Upstream changes: https://github.com/${UPSTREAM_REPO}/compare/${CURRENT}...${LATEST}"
+            echo
+            echo "Tests against this regeneration: **${{ steps.tests.outputs.result }}**"
+            echo
+            echo '## API surface diff'
+            echo '```diff'
+            git diff HEAD~1 -- tests/api-surface.txt | head -80
+            echo '```'
+            echo
+            echo '## Golden fixture diff'
+            git diff HEAD~1 --stat -- tests/fixtures
+            echo
+            echo 'Review per RELEASING.md: added surface lines = minor release,'
+            echo 'removed or changed lines = major. Golden diffs should be empty'
+            echo 'for a purely additive spec change.'
+          } > /tmp/pr-body.md
+          gh pr create --title "Sync spec to google/transit ${LATEST:0:12}" \
+            --body-file /tmp/pr-body.md --base main --head "$BRANCH"
+      - name: Open issue on automation failure
+        if: failure()
+        run: |
+          TITLE='Upstream proto sync needs manual attention'
+          if [ "$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq length)" = "0" ]; then
+            gh issue create --title "$TITLE" --body \
+              "The scheduled spec sync failed — most likely tools/convert.php met an upstream construct it has no rule for, which is its job. Run log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+
+  protoc-bump:
+    name: Track protoc patch releases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare pin against latest patch in the same minor
+        id: pin
+        run: |
+          PIN="$(cat PROTOC_VERSION)"
+          MINOR="${PIN%%.*}"
+          LATEST=$(gh api "repos/protocolbuffers/protobuf/releases?per_page=50" \
+            --jq "[.[] | select(.prerelease | not) | .tag_name | select(startswith(\"v${MINOR}.\"))] | map(ltrimstr(\"v\")) | sort_by(split(\".\") | map(tonumber)) | last")
+          echo "pin=$PIN" >> "$GITHUB_OUTPUT"
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          if [ -z "$LATEST" ] || [ "$LATEST" = "$PIN" ]; then
+            echo "protoc pin $PIN is current."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+          elif gh pr list --state open --json headRefName --jq '.[].headRefName' | grep -q '^protoc-bump-'; then
+            echo "Bump available but an open protoc-bump PR already exists."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "protoc $PIN -> $LATEST"
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: shivammathur/setup-php@v2
+        if: steps.pin.outputs.bump == 'true'
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Bump pin, floor, and regenerate
+        if: steps.pin.outputs.bump == 'true'
+        run: |
+          PIN='${{ steps.pin.outputs.pin }}'
+          LATEST='${{ steps.pin.outputs.latest }}'
+          echo "$LATEST" > PROTOC_VERSION
+          # The runtime floor must never predate the generating protoc.
+          sed -i "s/\^4\.${PIN}/^4.${LATEST}/" composer.json
+          curl -fsSL -o /tmp/protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${LATEST}/protoc-${LATEST}-linux-x86_64.zip"
+          unzip -q /tmp/protoc.zip -d "$HOME/protoc"
+          export PATH="$HOME/protoc/bin:$PATH"
+          ./regenerate.sh
+          composer update --no-interaction --no-progress
+          php tools/api-surface.php > tests/api-surface.txt
+          vendor/bin/phpunit
+      - name: Open pull request
+        if: steps.pin.outputs.bump == 'true'
+        run: |
+          LATEST='${{ steps.pin.outputs.latest }}'
+          BRANCH="protoc-bump-${LATEST}"
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "Bump protoc to ${LATEST}, raise runtime floor to match"
+          git push origin "$BRANCH"
+          gh pr create --title "Bump protoc to ${LATEST}" --base main --head "$BRANCH" --body \
+            "Regenerated with protoc ${LATEST}; the google/protobuf floor moves with it (the runtime must never predate the generating protoc — see RELEASING.md). Tests passed in this run. A floor raise ships as a minor release."
+
+  runtime-watch:
+    name: Watch runtime and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Install latest allowed dependencies
+        run: composer update --no-interaction --no-progress
+      - name: Security advisories
+        id: audit
+        run: |
+          if ! composer audit > /tmp/audit.txt 2>&1; then
+            cat /tmp/audit.txt
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Tests against latest dependencies
+        id: latest
+        run: vendor/bin/phpunit || echo "failed=true" >> "$GITHUB_OUTPUT"
+      - name: New protobuf major?
+        id: major
+        run: |
+          MAX=$(curl -fsSL https://repo.packagist.org/p2/google/protobuf.json | \
+            jq -r '[.packages["google/protobuf"][].version | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | ltrimstr("v") | split(".")[0] | tonumber] | max')
+          echo "Highest stable major on Packagist: $MAX"
+          if ! grep -q "\^${MAX}\." composer.json && ! grep -q "\^${MAX} " composer.json && ! grep -q "\^${MAX}\"" composer.json; then
+            echo "new_major=$MAX" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open issues for anything needing a decision
+        if: always() && (steps.audit.outputs.failed == 'true' || steps.latest.outputs.failed == 'true' || steps.major.outputs.new_major != '')
+        run: |
+          open_issue() {
+            if [ "$(gh issue list --state open --search "\"$1\" in:title" --json number --jq length)" = "0" ]; then
+              gh issue create --title "$1" --body "$2"
+            fi
+          }
+          RUN="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "${{ steps.audit.outputs.failed }}" = "true" ]; then
+            open_issue "composer audit reports a security advisory" \
+              "$(printf 'Weekly audit failed:\n\n```\n%s\n```\n\nRun: %s' "$(cat /tmp/audit.txt)" "$RUN")"
+          fi
+          if [ "${{ steps.latest.outputs.failed }}" = "true" ]; then
+            open_issue "Tests fail against latest allowed dependencies" \
+              "A new release of an allowed dependency (most likely google/protobuf) breaks the suite. Run: $RUN"
+          fi
+          if [ -n "${{ steps.major.outputs.new_major }}" ]; then
+            open_issue "google/protobuf ${{ steps.major.outputs.new_major }}.x exists — decide the constraint" \
+              "A new protobuf major is on Packagist and the composer constraint does not cover it. Per RELEASING.md: test, then append \"|| ^${{ steps.major.outputs.new_major }}.0\" (minor release) — and if this is the 6.x that ends 4.x-gencode support, schedule the v2 editions regeneration. Run: $RUN"
+          fi

@@ -2,7 +2,12 @@
   "name": "gtfs-media/gtfs-realtime-php",
   "type": "library",
   "description": "GTFS Realtime protobuf bindings for PHP, generated from the official specification.",
-  "keywords": ["gtfs", "gtfs-realtime", "transit", "protobuf"],
+  "keywords": [
+    "gtfs",
+    "gtfs-realtime",
+    "transit",
+    "protobuf"
+  ],
   "homepage": "https://gtfs.media",
   "license": "Apache-2.0",
   "require": {
@@ -16,7 +21,7 @@
     }
   },
   "require-dev": {
-    "phpunit/phpunit": "^11"
+    "phpunit/phpunit": "^10.5.62 || ^11.5.50 || ^12.5.8"
   },
   "autoload-dev": {
     "psr-4": {
@@ -25,5 +30,9 @@
   },
   "scripts": {
     "test": "phpunit"
+  },
+  "support": {
+    "issues": "https://github.com/FivePaths/gtfs-realtime-php/issues",
+    "source": "https://github.com/FivePaths/gtfs-realtime-php"
   }
 }

@@ -1,0 +1,10 @@
+# The automation's own dependencies (action pins) also arrive as PRs.
+# Composer is deliberately absent: the lock is untracked (library), and
+# constraint policy is handled by the Maintenance workflow with regeneration,
+# which Dependabot cannot do.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

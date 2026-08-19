@@ -1,0 +1,73 @@
+# Proves the shipped bindings stay correct on every supported runtime:
+# the matrix pins the constraint's floor and ceiling, the extension leg
+# catches divergence between protobuf's two PHP runtimes, and the
+# reproducibility job proves src/ is exactly what the pinned toolchain
+# emits from the committed proto — no hand edits, no drift.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }}, ${{ matrix.deps }} deps${{ matrix.extension == 'protobuf' && ', C extension' || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # PHP 8.1 + lowest is the constraint floor: google/protobuf 4.33.6
+          # (5.x needs PHP >= 8.2), phpunit 10.5.
+          - php: '8.1'
+            deps: lowest
+          - php: '8.3'
+            deps: highest
+          - php: '8.4'
+            deps: highest
+          # The PECL extension replaces the pure-PHP runtime internals when
+          # loaded; this leg catches behavioral divergence between the two.
+          - php: '8.3'
+            deps: highest
+            extension: protobuf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ${{ matrix.extension }}
+          coverage: none
+      - name: Install dependencies
+        run: composer update --no-interaction --no-progress ${{ matrix.deps == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
+      - name: Log resolved versions
+        run: |
+          composer show google/protobuf phpunit/phpunit | grep -E '^(name|versions)'
+          if [ -n "${{ matrix.extension }}" ]; then php --ri protobuf | head -5; fi
+      - run: vendor/bin/phpunit
+      - run: composer audit
+
+  reproducibility:
+    name: Regeneration is reproducible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Install pinned protoc
+        run: |
+          V="$(cat PROTOC_VERSION)"
+          curl -fsSL -o /tmp/protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${V}/protoc-${V}-linux-x86_64.zip"
+          unzip -q /tmp/protoc.zip -d "$HOME/protoc"
+          echo "$HOME/protoc/bin" >> "$GITHUB_PATH"
+      - run: ./regenerate.sh
+      - name: Committed sources match regenerated output
+        run: git diff --exit-code -- proto/gtfs-realtime.proto src
+      - name: Install dependencies
+        run: composer update --no-interaction --no-progress
+      - name: Committed API surface matches generated code
+        run: php tools/api-surface.php | diff -u tests/api-surface.txt -
