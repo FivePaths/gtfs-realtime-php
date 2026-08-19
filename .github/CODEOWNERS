@@ -1,0 +1,6 @@
+# GitHub automatically requests a review from the code owner on every pull
+# request that touches matching paths — including the PRs the Maintenance
+# workflow opens (authored by github-actions[bot]) and Dependabot's. That is
+# the notification channel: a spec sync or a dependency bump lands as a PR
+# with your review already requested.
+* @tylershuster
