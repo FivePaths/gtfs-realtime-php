@@ -1,5 +1,7 @@
 # gtfs-realtime-php
 
+[![CI](https://github.com/FivePaths/gtfs-realtime-php/actions/workflows/ci.yml/badge.svg)](https://github.com/FivePaths/gtfs-realtime-php/actions/workflows/ci.yml)
+
 PHP bindings for [GTFS Realtime](https://gtfs.org/documentation/realtime/reference/),
 generated from the official protocol buffer definition, with a protobuf
 runtime that receives security updates.
