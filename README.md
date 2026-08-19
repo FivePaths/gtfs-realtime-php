@@ -1,16 +1,15 @@
 # gtfs-realtime-php
 
 [![CI](https://github.com/FivePaths/gtfs-realtime-php/actions/workflows/ci.yml/badge.svg)](https://github.com/FivePaths/gtfs-realtime-php/actions/workflows/ci.yml)
+[![Packagist](https://img.shields.io/packagist/v/gtfs-media/gtfs-realtime-php)](https://packagist.org/packages/gtfs-media/gtfs-realtime-php)
+[![Downloads](https://img.shields.io/packagist/dt/gtfs-media/gtfs-realtime-php)](https://packagist.org/packages/gtfs-media/gtfs-realtime-php/stats)
+[![PHP](https://img.shields.io/packagist/dependency-v/gtfs-media/gtfs-realtime-php/php?label=php)](https://packagist.org/packages/gtfs-media/gtfs-realtime-php)
+[![License](https://img.shields.io/packagist/l/gtfs-media/gtfs-realtime-php)](https://github.com/FivePaths/gtfs-realtime-php/blob/main/LICENSE)
 
-PHP bindings for [GTFS Realtime](https://gtfs.org/documentation/realtime/reference/),
-generated from the official protocol buffer definition, with a protobuf
-runtime that receives security updates.
-
-This package is a maintained replacement for `lowa/gtfs-realtime-php`, which
-pins `google/protobuf` to 3.25.0. That version is affected by CVE-2026-6409,
-a denial of service triggered by malicious protobuf messages — exactly the
-kind of untrusted input a GTFS Realtime consumer parses. Composer 2.8+
-refuses to install it.
+PHP classes for reading and writing [GTFS Realtime](https://gtfs.org/documentation/realtime/reference/)
+feeds — vehicle positions, trip updates, and service alerts. Generated from
+the official protocol buffer definition, kept current with it, and built on a
+protobuf runtime that receives security updates.
 
 ## Install
 
@@ -18,67 +17,136 @@ refuses to install it.
 composer require gtfs-media/gtfs-realtime-php
 ```
 
-Requires PHP 8.1+ and installs `google/protobuf` at `^4.33.6 || ^5.0`,
-whichever fits your project's other constraints. For large feeds (megabytes
-of TripUpdates), the pure-PHP runtime is slow and memory-hungry; installing
-the PECL `protobuf` extension removes both costs without code changes.
+Requires PHP 8.1 or later. The protobuf runtime dependency is
+`google/protobuf ^4.33.6 || ^5.0` — both currently supported majors — so
+Composer can settle on whichever version coexists with a project's other
+dependencies.
 
-## Use
+## Read a feed
 
 ```php
 use Google\Transit\Realtime\FeedMessage;
 
 $feed = new FeedMessage();
-$feed->mergeFromString(file_get_contents('https://example.com/vehicle-positions.pb'));
+$feed->mergeFromString(file_get_contents('https://example.com/vehiclepositions.pb'));
 
 foreach ($feed->getEntity() as $entity) {
   if ($entity->hasVehicle()) {
-    $position = $entity->getVehicle()->getPosition();
-    printf("%s at %f, %f\n",
-      $entity->getId(),
-      $position->getLatitude(),
-      $position->getLongitude());
+    $vehicle = $entity->getVehicle();
+    printf("%s at %.5f, %.5f\n",
+      $vehicle->getVehicle()->getLabel(),
+      $vehicle->getPosition()->getLatitude(),
+      $vehicle->getPosition()->getLongitude());
   }
 }
+```
 
-// Or convert the whole feed to JSON.
+Every message type in the spec is here — `TripUpdate`, `VehiclePosition`,
+`Alert`, and the newer additions like `TripModifications` — with getters,
+setters, and `has*()` presence checks for each field. Field presence follows
+the spec: a field a producer set to zero is set, and a field the producer
+omitted is absent, even though a getter returns zero in both cases.
+
+```php
+use Google\Transit\Realtime\TripDescriptor\ScheduleRelationship;
+
+foreach ($feed->getEntity() as $entity) {
+  if (!$entity->hasTripUpdate()) {
+    continue;
+  }
+  $update = $entity->getTripUpdate();
+  if ($update->getTrip()->getScheduleRelationship() === ScheduleRelationship::CANCELED) {
+    printf("trip %s is canceled\n", $update->getTrip()->getTripId());
+  }
+}
+```
+
+A whole feed converts to JSON in one call, which is how the binary feeds most
+agencies publish become something a browser can use:
+
+```php
 $json = $feed->serializeToJsonString();
 ```
 
-## Compatibility with lowa/gtfs-realtime-php
+## Write a feed
 
-Class names match: everything lives in `Google\Transit\Realtime`, so
-replacing the package needs no code changes for typical use. What changes:
+Producers use the same classes in the other direction:
+
+```php
+use Google\Transit\Realtime\FeedHeader;
+use Google\Transit\Realtime\FeedMessage;
+
+$feed = new FeedMessage();
+$feed->setHeader(
+  (new FeedHeader())
+    ->setGtfsRealtimeVersion('2.0')
+    ->setTimestamp(time())
+);
+// ... add entities ...
+file_put_contents('feed.pb', $feed->serializeToString());
+```
+
+## Performance
+
+The pure-PHP protobuf runtime handles typical feeds without trouble. Very
+large feeds — megabytes of trip updates for a whole network — cost real CPU
+and memory there. Installing the PECL `protobuf` extension replaces the
+runtime internals with the C implementation; no code changes, same classes.
+
+## Migrating from lowa/gtfs-realtime-php
+
+`lowa/gtfs-realtime-php` pins `google/protobuf` to exactly 3.25.0, which is
+affected by [CVE-2026-6409](https://github.com/advisories/GHSA-p2gh-cfq4-4wjc),
+a denial of service triggered by malicious protobuf messages — precisely the
+untrusted input a GTFS Realtime consumer parses. The pin makes the fix
+uninstallable, `composer audit` flags it, and Composer 2.8+ refuses to
+install the package at all. This package is a drop-in replacement:
+
+```
+composer remove lowa/gtfs-realtime-php
+composer require gtfs-media/gtfs-realtime-php
+```
+
+Class names match — everything lives in `Google\Transit\Realtime` — so
+typical code needs no changes. What to check:
 
 - The legacy underscore class names (`FeedHeader_Incrementality` and
-  friends) are gone. Current protoc no longer generates them. Use the
+  friends) are gone; current protoc no longer generates them. Use the
   nested form, `FeedHeader\Incrementality`.
 - Field presence is tracked for every singular field. Values a producer
   explicitly sets to a default — `direction_id: 0`,
   `schedule_relationship: SCHEDULED`, `delay: 0` — survive parsing and
   appear in JSON output. lowa's conversion silently dropped them, so JSON
-  from this package can contain keys the old package omitted; the values
-  were always in the feed.
+  from this package can contain keys the old package omitted. The values
+  were always in the feed; nothing that was present before is missing now.
 - The spec is current: `TripModifications`, `Stop`, `Shape`,
-  `TranslatedImage`, and everything else added upstream since 2024 is here.
+  `TranslatedImage`, and every field and enum value added upstream since
+  early 2024.
 
-Unchanged, for consumers relying on it: getters on **unset** fields return
-zero values (`getCause()` gives `0`, not the spec default `UNKNOWN_CAUSE`),
+Unchanged, for code relying on it: getters on **unset** fields return zero
+values (`getCause()` gives `0`, not the spec default `UNKNOWN_CAUSE`),
 because proto3 cannot express proto2's custom defaults. Check `has*()`
-before trusting a getter, as with lowa. The planned v2 (see RELEASING.md)
-restores spec defaults.
+before trusting a getter, exactly as with lowa.
 
-## How this package tracks the spec
+## How the package tracks the spec
 
-The pristine official file lives at `proto/upstream/gtfs-realtime.proto`,
-pinned to the google/transit commit recorded in
-`proto/upstream/UPSTREAM_COMMIT`. The compiled `proto/gtfs-realtime.proto`
-is produced from it by `tools/convert.php` — never edited by hand — and
-`./regenerate.sh` runs the whole chain with the protoc version pinned in
-`PROTOC_VERSION`. Committed snapshots (`tests/api-surface.txt`,
-`tests/fixtures/*.json`) make every regeneration's behavior change visible
-as a reviewable diff. RELEASING.md has the full procedure and versioning
-rules.
+The pristine official proto lives at `proto/upstream/gtfs-realtime.proto`,
+pinned to the google/transit commit recorded next to it. A scripted,
+assertion-guarded conversion produces the compiled proto — never edited by
+hand — and `regenerate.sh` runs the whole chain with a pinned protoc
+version. Committed snapshots of the API surface and of golden JSON output
+turn every regeneration into a reviewable diff.
+
+A weekly job watches upstream: a spec change arrives as a pull request with
+the regeneration already done, a protoc release as a pull request bumping
+the toolchain, and a security advisory as an issue. CI tests every release
+against both runtime majors, at the dependency floor and ceiling, with and
+without the C extension.
+
+Version numbers follow from that: new spec surface is a minor release,
+anything removed or any raised floor is a major, tooling and documentation
+are patches. [RELEASING.md](https://github.com/FivePaths/gtfs-realtime-php/blob/main/RELEASING.md)
+has the full procedure.
 
 ## Changes from the official proto
 
@@ -108,6 +176,14 @@ supported runtime majors, `tools/convert.php` derives a proto3 file instead:
 
 The proto package stays `transit_realtime`, so descriptors and any
 cross-language tooling see the official names.
+
+## Authorship
+
+This package — code, tooling, tests, and documentation — was written by
+Claude, Anthropic's AI model, supervised by a human maintainer who uses the
+package professionally in production transit systems. Nothing merges or
+ships without that person's review: the automation opens pull requests, a
+human reads the diffs and decides.
 
 ## License
 

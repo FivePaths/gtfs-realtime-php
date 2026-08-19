@@ -5,8 +5,13 @@
   "keywords": [
     "gtfs",
     "gtfs-realtime",
+    "gtfs-rt",
     "transit",
-    "protobuf"
+    "realtime",
+    "protobuf",
+    "vehicle-positions",
+    "trip-updates",
+    "service-alerts"
   ],
   "homepage": "https://gtfs.media",
   "license": "Apache-2.0",
@@ -33,6 +38,16 @@
   },
   "support": {
     "issues": "https://github.com/FivePaths/gtfs-realtime-php/issues",
-    "source": "https://github.com/FivePaths/gtfs-realtime-php"
+    "source": "https://github.com/FivePaths/gtfs-realtime-php",
+    "docs": "https://fivepaths.github.io/gtfs-realtime-php/"
+  },
+  "authors": [
+    {
+      "name": "FivePaths",
+      "homepage": "https://fivepaths.com"
+    }
+  ],
+  "suggest": {
+    "ext-protobuf": "Replaces the pure-PHP protobuf runtime with the C implementation; much faster and leaner on large feeds"
   }
 }

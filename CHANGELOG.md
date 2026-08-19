@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 — unreleased
+## 1.0.0 — 2026-08-18
 
 First release. PHP classes for GTFS Realtime, generated with protoc 33.6
 from the official definition at google/transit commit `474750a1`
