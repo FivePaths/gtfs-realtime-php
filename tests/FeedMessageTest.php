@@ -23,24 +23,42 @@ class FeedMessageTest extends TestCase {
    * The golden files pin the exact JSON every fixture serializes to. A diff
    * here after regenerating src/ means observable behavior changed; review
    * it before regenerating the goldens with tools/make-fixtures.php.
+   *
+   * JSON key order and binary field order are runtime implementation
+   * details: the goldens record the pure-PHP runtime's output byte for
+   * byte, and under the C extension the comparison is order-normalized.
    */
   #[DataProvider('fixtures')]
   public function testJsonMatchesGolden(string $pb, string $golden): void {
     $feed = new FeedMessage();
     $feed->mergeFromString(file_get_contents($pb));
-    $this->assertSame(file_get_contents($golden), $feed->serializeToJsonString() . "\n");
+    if (!extension_loaded('protobuf')) {
+      $this->assertSame(file_get_contents($golden), $feed->serializeToJsonString() . "\n");
+    }
+    else {
+      $this->assertSameJson(file_get_contents($golden), $feed->serializeToJsonString());
+    }
   }
 
   /**
-   * Parse -> serialize must reproduce the input byte for byte, the cheapest
-   * proof that a regeneration or runtime bump kept the wire format stable.
+   * Parse -> serialize must lose nothing. The pure-PHP runtime's output is
+   * additionally pinned byte for byte; the C extension orders fields
+   * differently, so there the proof is equal length plus identical decoded
+   * content.
    */
   #[DataProvider('fixtures')]
   public function testBinaryRoundTrip(string $pb, string $golden): void {
     $bytes = file_get_contents($pb);
     $feed = new FeedMessage();
     $feed->mergeFromString($bytes);
-    $this->assertSame($bytes, $feed->serializeToString());
+    $reserialized = $feed->serializeToString();
+    if (!extension_loaded('protobuf')) {
+      $this->assertSame($bytes, $reserialized);
+    }
+    $this->assertSame(strlen($bytes), strlen($reserialized));
+    $reparsed = new FeedMessage();
+    $reparsed->mergeFromString($reserialized);
+    $this->assertSameJson($feed->serializeToJsonString(), $reparsed->serializeToJsonString());
   }
 
   /**
@@ -54,7 +72,37 @@ class FeedMessageTest extends TestCase {
     $bytes = file_get_contents(self::FIXTURES . '/feed.pb') . "\xC0\x3E\x2A";
     $feed = new FeedMessage();
     $feed->mergeFromString($bytes);
-    $this->assertSame($bytes, $feed->serializeToString());
+    $reserialized = $feed->serializeToString();
+    if (!extension_loaded('protobuf')) {
+      $this->assertSame($bytes, $reserialized);
+    }
+    $this->assertSame(strlen($bytes), strlen($reserialized));
+    $this->assertStringContainsString("\xC0\x3E\x2A", $reserialized);
+  }
+
+  /**
+   * Strict equality after recursively sorting keys and rounding floats to
+   * six significant digits, so semantically equal JSON passes regardless of
+   * which runtime emitted it: the runtimes render the same float32 bits as
+   * different decimal strings (37.7793 vs 37.779301).
+   */
+  private function assertSameJson(string $expected, string $actual): void {
+    $e = json_decode($expected, TRUE);
+    $a = json_decode($actual, TRUE);
+    $normalize = function (array &$node) use (&$normalize): void {
+      ksort($node);
+      foreach ($node as &$child) {
+        if (is_array($child)) {
+          $normalize($child);
+        }
+        elseif (is_float($child)) {
+          $child = (float) sprintf('%.6g', $child);
+        }
+      }
+    };
+    $normalize($e);
+    $normalize($a);
+    $this->assertSame($e, $a);
   }
 
   /**
