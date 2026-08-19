@@ -107,12 +107,19 @@ composer remove lowa/gtfs-realtime-php
 composer require gtfs-media/gtfs-realtime-php
 ```
 
-Class names match — everything lives in `Google\Transit\Realtime` — so
-typical code needs no changes. What to check:
+It also declares itself as a Composer `replace` for
+`lowa/gtfs-realtime-php` 1.0.0, so a project that still requires the old
+name through some other dependency resolves to this package once it is
+required anywhere.
 
-- The legacy underscore class names (`FeedHeader_Incrementality` and
-  friends) are gone; current protoc no longer generates them. Use the
-  nested form, `FeedHeader\Incrementality`.
+Class names match — everything lives in `Google\Transit\Realtime` — and
+the legacy underscore names lowa shipped (`FeedHeader_Incrementality` and
+friends) exist here as deprecated aliases of the nested classes, so code
+written against either form runs unchanged. What to check:
+
+- New code should use the nested form, `FeedHeader\Incrementality`; the
+  underscore aliases exist for compatibility and carry a suppressed
+  deprecation notice that tooling can surface.
 - Field presence is tracked for every singular field. Values a producer
   explicitly sets to a default — `direction_id: 0`,
   `schedule_relationship: SCHEDULED`, `delay: 0` — survive parsing and
