@@ -37,7 +37,7 @@ jobs:
     name: Sync upstream proto changes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check for upstream drift
         id: drift
         run: |
@@ -128,7 +128,7 @@ jobs:
     name: Track protoc patch releases
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Compare pin against latest patch in the same minor
         id: pin
         run: |
@@ -186,7 +186,7 @@ jobs:
     name: Watch runtime and advisories
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
