@@ -34,7 +34,7 @@ jobs:
       # The workflow token can deploy to Pages but cannot create the site --
       # that is a repository-administration call GitHub never grants to
       # GITHUB_TOKEN, so the first enable is a human step.
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - name: Build page from README
         run: |
           command -v pandoc || sudo apt-get install -y pandoc
