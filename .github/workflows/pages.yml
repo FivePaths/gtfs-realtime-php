@@ -51,7 +51,7 @@ jobs:
           # with overflow-x); pandoc emits bare <pre> for plain fences and
           # <pre class="lang"> for tagged ones.
           sed -i -e 's/<pre class="/<pre class="code /g' -e 's/<pre>/<pre class="code">/g' _site/index.html
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
       - id: deployment
