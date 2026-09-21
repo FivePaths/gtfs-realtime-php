@@ -4,7 +4,7 @@
 [![Packagist](https://img.shields.io/packagist/v/gtfs-media/gtfs-realtime-php)](https://packagist.org/packages/gtfs-media/gtfs-realtime-php)
 [![Downloads](https://img.shields.io/packagist/dt/gtfs-media/gtfs-realtime-php)](https://packagist.org/packages/gtfs-media/gtfs-realtime-php/stats)
 [![PHP](https://img.shields.io/packagist/dependency-v/gtfs-media/gtfs-realtime-php/php?label=php)](https://packagist.org/packages/gtfs-media/gtfs-realtime-php)
-[![License](https://img.shields.io/packagist/l/gtfs-media/gtfs-realtime-php)](https://github.com/FivePaths/gtfs-realtime-php/blob/main/LICENSE)
+[![License](https://img.shields.io/packagist/l/gtfs-media/gtfs-realtime-php)](https://github.com/FivePaths/gtfs-realtime-php/blob/main/LICENSE.md)
 
 PHP classes for reading and writing [GTFS Realtime](https://gtfs.org/documentation/realtime/reference/)
 feeds — vehicle positions, trip updates, and service alerts. Generated from
@@ -194,5 +194,8 @@ human reads the diffs and decides.
 
 ## License
 
-Apache-2.0, matching the GTFS Realtime protocol definition this package is
-derived from.
+GPL-3.0-or-later. See [LICENSE.md](LICENSE.md).
+
+The GTFS Realtime protocol definition in `proto/` is Apache-2.0, copyright
+Google LLC, and keeps that license and its own attribution notices; the
+Apache-2.0 terms permit its use within this GPL-3.0-or-later work.
